@@ -74,11 +74,13 @@ class RateLimitedClient:
         self.user_agents = user_agents or list(DEFAULT_USER_AGENTS)
 
         # Build proxy URL from config
-        client_kwargs: dict = {"timeout": httpx.Timeout(connect=15.0, read=30.0, write=10.0, pool=5.0)}
+        client_kwargs: dict = {"timeout": httpx.Timeout(15.0, connect=15.0)}
         if proxy_config.endpoint and proxy_config.username:
             proxy_url = f"http://{proxy_config.username}:{proxy_config.password}@{proxy_config.endpoint}"
             client_kwargs["proxy"] = proxy_url
 
+        # Use follow_redirects to handle Amazon's robot-check pages
+        client_kwargs["follow_redirects"] = True
         self.client = httpx.Client(**client_kwargs)
 
     def _get_user_agent(self) -> str:

@@ -108,13 +108,16 @@ def search_product(
     soup = BeautifulSoup(response.text, "html.parser")
     result_cards = _find_result_cards(soup)
 
+    seen_asins: set[str] = set()
+
     for card in result_cards:
         if len(results) >= 10:
             break
 
         try:
             product = _parse_search_result_card(card)
-            if product and product.asin:
+            if product and product.asin and product.asin not in seen_asins:
+                seen_asins.add(product.asin)
                 results.append(product)
         except Exception as exc:
             logger.debug("Failed to parse a search result card: %s", exc)
@@ -125,129 +128,69 @@ def search_product(
 
 
 def _find_result_cards(soup: BeautifulSoup) -> list:
-    """Find all product result cards on the search page using multiple selectors."""
-    # Amazon frequently changes class names. Try multiple strategies.
-    selectors = [
-        'div[data-component-type="s-search-result"]',
-        'div.s-result-item[data-asin]',
-        "div.sg-col-4-of-24",
-        "div.sg-col-4-of-12",
-        "div.s-result-item",
-        'div[data-asin]:not([data-asin=""])',
-    ]
+    """Find all product result cards on the search page.
 
-    for selector in selectors:
-        cards = soup.select(selector)
-        if cards:
-            # Filter out empty ASINs
-            valid = []
-            for c in cards:
-                asin = c.get("data-asin", "")
-                if asin and asin.strip():
-                    valid.append(c)
-            if valid:
-                return valid
-
-    # Last resort: find all <a> with /dp/ links and walk up to their container
-    fallback_cards = []
-    for link in soup.find_all("a", href=True):
-        asin = _extract_asin_from_link(link["href"])
-        if asin:
-            # Walk up to a reasonable container
-            parent = link
-            for _ in range(5):
-                if parent and parent.name in ("div", "li"):
-                    break
-                parent = parent.parent if parent else None
-            if parent and parent not in fallback_cards:
-                fallback_cards.append(parent)
-
-    return fallback_cards
+    Uses data-asin attribute on divs and validates ASIN format (10 uppercase alphanumeric chars).
+    """
+    cards = soup.select('div[data-asin]')
+    cards = [c for c in cards if re.match(r'^[A-Z0-9]{10}$', c.get('data-asin', ''))]
+    return cards
 
 
 def _parse_search_result_card(card) -> Optional[Product]:
-    """Parse a single search result card into a Product object."""
-    # Extract ASIN
-    asin = card.get("data-asin", "")
-    if not asin:
-        # Try to find ASIN from link
-        link_tag = card.find("a", href=True)
-        if link_tag:
-            asin = _extract_asin_from_link(link_tag["href"]) or ""
+    """Parse a single product card div into a Product object."""
+    asin = card.get('data-asin')
     if not asin:
         return None
 
-    # Extract title
-    title = _extract_field(card, [
-        'h2 a span',
-        'h2 a',
-        'h2 span',
-        '[data-cy="title-recipe"] a',
-        'a.a-link-normal.s-underline-text',
-        'span.a-size-medium',
-        'span.a-size-base-plus',
-    ], extract_text=True) or ""
+    # Title: try h2 full text first, fall back to img alt
+    title = ''
+    title_el = card.select_one('h2')
+    if title_el:
+        title = title_el.get_text(' ', strip=True)
+    if not title:
+        img = card.select_one('img')
+        title = (img.get('alt', '') or '').strip() if img else ''
 
-    # Extract price
-    price_text = _extract_field(card, [
-        'span.a-price span.a-offscreen',
-        'span.a-price[data-a-size] span.a-offscreen',
-        'span.a-price-whole',
-        '.a-price .a-offscreen',
-        'span.a-price',
-    ], extract_text=True)
-    price = _parse_price(price_text) if price_text else None
+    # Price
+    price = None
+    price_el = card.select_one('span.a-price > span.a-offscreen')
+    if price_el:
+        price_text = price_el.get_text(strip=True)
+        try:
+            price = float(price_text.replace('$', '').replace(',', ''))
+        except ValueError:
+            pass
 
-    # Extract URL
-    url = ""
-    link_tag = card.find("a", href=True)
-    if link_tag:
-        href = link_tag["href"]
-        if href.startswith("/"):
-            url = BASE_URL + href
-        elif href.startswith(BASE_URL):
-            url = href
+    # Rating
+    rating_text = None
+    rating_el = card.select_one('span.a-icon-alt')
+    if rating_el:
+        rating_text = rating_el.get_text(strip=True)
+
+    # URL
+    url = ''
+    link = card.select_one('a[href*="/dp/"]')
+    if link:
+        href = link.get('href', '')
+        url = f'https://www.amazon.com{href}' if href.startswith('/') else href
     if not url:
-        url = f"{BASE_URL}/dp/{asin}"
+        url = f'https://www.amazon.com/dp/{asin}'
 
-    # Extract brand
+    # Brand
     brand = _extract_field(card, [
         'h5[data-attribute]',
         '[data-attribute="brand"]',
         'span.a-size-small.a-color-base',
-        '.s-sponsored-label-text',
-        '.a-row.a-size-base a',
-    ], extract_text=True) or ""
+    ], extract_text=True) or ''
 
-    # Extract rating
-    rating_text = _extract_field(card, [
-        'i.a-icon-star span',
-        'i.a-icon-star',
-        'span.a-icon-alt',
-        '[data-cy="reviews-block"] i span',
-    ], extract_text=True)
-    rating = _parse_rating(rating_text) if rating_text else None
-
-    # Extract review count
-    review_count_text = _extract_field(card, [
-        'span.a-size-base.s-underline-text',
-        'a.a-link-normal span.a-size-base',
-        'span[data-csa-c-func-deps="aui-da-a-truncate"]',
-        '[data-cy="reviews-block"] span.a-size-base',
-    ], extract_text=True)
-    review_count = _parse_review_count(review_count_text) if review_count_text else None
-
-    product = Product(
+    return Product(
         asin=asin,
         title=title,
         brand=brand,
         price=price,
         url=url,
     )
-
-    # Set rating and review count in a way compatible with the Product model
-    # (Product doesn't have rating/review_count fields, so we'd use what we have)
-    return product
 
 
 def _extract_field(soup, selectors: list[str], extract_text: bool = False) -> Optional[str]:
