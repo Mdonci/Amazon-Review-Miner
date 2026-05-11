@@ -74,24 +74,36 @@ class RateLimitedClient:
         self.user_agents = user_agents or list(DEFAULT_USER_AGENTS)
 
         # Build proxy URL from config
-        client_kwargs: dict = {}
+        client_kwargs: dict = {"timeout": httpx.Timeout(connect=15.0, read=30.0, write=10.0, pool=5.0)}
         if proxy_config.endpoint and proxy_config.username:
             proxy_url = f"http://{proxy_config.username}:{proxy_config.password}@{proxy_config.endpoint}"
             client_kwargs["proxy"] = proxy_url
 
-        self.client = httpx.Client(**client_kwargs, timeout=30.0)
+        self.client = httpx.Client(**client_kwargs)
 
     def _get_user_agent(self) -> str:
         """Pick a random User-Agent string."""
         return random.choice(self.user_agents)
 
+    def _get_headers(self) -> dict:
+        """Build default headers that look like a real browser."""
+        return {
+            "User-Agent": self._get_user_agent(),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
+        }
+
     def get(self, url: str, **kwargs) -> httpx.Response:
         """Make a rate-limited GET request with retry logic."""
         self.rate_limiter.wait_if_needed()
 
-        headers = kwargs.pop("headers", {})
-        if "User-Agent" not in headers:
-            headers["User-Agent"] = self._get_user_agent()
+        headers = self._get_headers()
+        # Merge any additional headers from kwargs
+        extra_headers = kwargs.pop("headers", {})
+        headers.update(extra_headers)
 
         last_exc: Optional[Exception] = None
         for attempt in range(self.config.max_retries + 1):
