@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from datetime import datetime, timedelta
 from typing import Optional
@@ -13,6 +14,7 @@ class ReviewCache:
 
     def __init__(self, db_path: str = "./cache/reviews.db") -> None:
         self.db_path = db_path
+        os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
         self._init_db()
 
     def _get_connection(self) -> sqlite3.Connection:

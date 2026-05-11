@@ -6,6 +6,7 @@ dataclass, following the template specified in CODER_BRIEF.md.
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 
 from src.models.report import (
@@ -478,6 +479,7 @@ def generate_report(report: Report, output_path: str | None = None) -> str:
     )
 
     if output_path:
+        os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(report_str)
 
