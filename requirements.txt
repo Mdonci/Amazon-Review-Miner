@@ -1,0 +1,7 @@
+requests
+beautifulsoup4
+lxml
+httpx
+pydantic
+pyyaml
+rich

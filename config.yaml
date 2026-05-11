@@ -1,0 +1,29 @@
+proxy:
+  provider: decodo
+  url: ""
+  rotate_ip: true
+
+rate_limits:
+  queries_per_hour: 3
+  seconds_between_pages: 60
+  max_retries: 3
+  retry_backoff_base: 30
+
+scraping:
+  max_reviews: 2000
+  max_qa_pages: 5
+  cache_days: 7
+  user_agents: []
+
+llm:
+  model: deepseek-v4-flash
+  provider: deepseek
+  max_tokens: 2000
+
+output:
+  format: markdown
+  report_dir: ./reports/
+  keep_raw_data: true
+
+storage:
+  cache_db: ./cache/reviews.db
