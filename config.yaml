@@ -1,6 +1,8 @@
 proxy:
   provider: decodo
-  url: ""
+  endpoint: gate.decodo.com:7000
+  username: user-spfafnk5j1-country-us
+  password: "=l7Up0KiR9erg2rmhQ"
   rotate_ip: true
 
 rate_limits:

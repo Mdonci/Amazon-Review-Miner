@@ -73,10 +73,11 @@ class RateLimitedClient:
         self.rate_limiter = RateLimiter(config)
         self.user_agents = user_agents or list(DEFAULT_USER_AGENTS)
 
-        # Build proxy URL if configured
+        # Build proxy URL from config
         client_kwargs: dict = {}
-        if proxy_config.url:
-            client_kwargs["proxies"] = proxy_config.url
+        if proxy_config.endpoint and proxy_config.username:
+            proxy_url = f"http://{proxy_config.username}:{proxy_config.password}@{proxy_config.endpoint}"
+            client_kwargs["proxy"] = proxy_url
 
         self.client = httpx.Client(**client_kwargs, timeout=30.0)
 

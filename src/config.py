@@ -8,7 +8,9 @@ from pydantic import BaseModel, Field
 
 class ProxyConfig(BaseModel):
     provider: str = "decodo"
-    url: str = ""
+    endpoint: str = "gate.decodo.com:7000"
+    username: str = "user-spfafnk5j1-country-us"
+    password: str = "=l7Up0KiR9erg2rmhQ"
     rotate_ip: bool = True
 
 
