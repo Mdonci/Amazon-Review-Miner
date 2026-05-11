@@ -323,7 +323,7 @@ def _parse_single_review(card, asin: str) -> Optional[Review]:
 
     # Vine Voice
     vine_text = _get_text(card, [
-        '[data-hook="vine-badge"]',
+        '[data-hook="vine-voice-badge"]',
         'span:contains("Vine")',
     ])
     vine_voice = bool(vine_text and "vine" in vine_text.lower())

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import random
 import time
 from datetime import datetime, timedelta
@@ -83,6 +84,14 @@ class RateLimitedClient:
         client_kwargs["follow_redirects"] = True
         self.client = httpx.Client(**client_kwargs)
 
+        # Load cookies from file for authenticated access
+        self.cookies: dict = {}
+        if proxy_config.cookie_path and os.path.exists(proxy_config.cookie_path):
+            import json
+            with open(proxy_config.cookie_path) as f:
+                raw = json.load(f)
+            self.cookies = {c['name']: c['value'] for c in raw if 'domain' in c and 'amazon.com' in c.get('domain', '')}
+
     def _get_user_agent(self) -> str:
         """Pick a random User-Agent string."""
         return random.choice(self.user_agents)
@@ -116,7 +125,7 @@ class RateLimitedClient:
                     attempt + 1,
                     self.config.max_retries + 1,
                 )
-                response = self.client.get(url, headers=headers, **kwargs)
+                response = self.client.get(url, headers=headers, cookies=self.cookies, **kwargs)
 
                 if response.status_code == 429:
                     retry_after = int(response.headers.get("Retry-After", "60"))

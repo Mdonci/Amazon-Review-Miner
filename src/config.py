@@ -12,6 +12,7 @@ class ProxyConfig(BaseModel):
     username: str = "user-spfafnk5j1-country-us"
     password: str = "=l7Up0KiR9erg2rmhQ"
     rotate_ip: bool = True
+    cookie_path: str = "./amazon_cookies.json"
 
 
 class RateLimitConfig(BaseModel):
