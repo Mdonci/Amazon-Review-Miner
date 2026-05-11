@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from typing import Optional
 
 from bs4 import BeautifulSoup
@@ -77,14 +78,20 @@ def _parse_review_count(text: str) -> Optional[int]:
 
 
 def search_product(
-    product_name: str, client: "RateLimitedClient"  # noqa: F821
+    product_name: str, client: "RateLimitedClient",  # noqa: F821
+    max_attempts: int = 3,
 ) -> list[Product]:
     """
     Search Amazon for a product by name and return up to 10 Product objects.
 
+    Retries up to *max_attempts* times when Amazon serves a robot-check page
+    (HTTP 200 but zero ``div[data-asin]`` cards) or when the HTTP request
+    itself fails.
+
     Args:
         product_name: The product name or search query to look up.
         client: A RateLimitedClient instance for making HTTP requests.
+        max_attempts: Maximum number of attempts (default 3).
 
     Returns:
         A list of up to 10 Product objects with minimal data (asin, title,
@@ -96,35 +103,57 @@ def search_product(
     url = f"{BASE_URL}/s?k={product_name.replace(' ', '+')}"
     logger.info("Searching Amazon for '%s' at %s", product_name, url)
 
-    results: list[Product] = []
-
-    try:
-        response = client.get(url)
-        response.raise_for_status()
-    except Exception as exc:
-        logger.warning("Search request failed for '%s': %s", product_name, exc)
-        return results
-
-    soup = BeautifulSoup(response.text, "html.parser")
-    result_cards = _find_result_cards(soup)
-
-    seen_asins: set[str] = set()
-
-    for card in result_cards:
-        if len(results) >= 10:
-            break
+    for attempt in range(max_attempts):
+        results: list[Product] = []
 
         try:
-            product = _parse_search_result_card(card)
-            if product and product.asin and product.asin not in seen_asins:
-                seen_asins.add(product.asin)
-                results.append(product)
+            response = client.get(url)
+            response.raise_for_status()
         except Exception as exc:
-            logger.debug("Failed to parse a search result card: %s", exc)
-            continue
+            logger.warning(
+                "Search request failed for '%s' (attempt %d/%d): %s",
+                product_name, attempt + 1, max_attempts, exc,
+            )
+            if attempt < max_attempts - 1:
+                time.sleep(10)
+                continue
+            return results
 
-    logger.info("Found %d products for '%s'", len(results), product_name)
-    return results
+        soup = BeautifulSoup(response.text, "html.parser")
+        result_cards = _find_result_cards(soup)
+
+        seen_asins: set[str] = set()
+
+        for card in result_cards:
+            if len(results) >= 10:
+                break
+
+            try:
+                product = _parse_search_result_card(card)
+                if product and product.asin and product.asin not in seen_asins:
+                    seen_asins.add(product.asin)
+                    results.append(product)
+            except Exception as exc:
+                logger.debug("Failed to parse a search result card: %s", exc)
+                continue
+
+        if results:
+            logger.info("Found %d products for '%s'", len(results), product_name)
+            return results
+
+        # Likely a robot-check page — wait and retry
+        if attempt < max_attempts - 1:
+            logger.warning(
+                "Zero product cards for '%s' (attempt %d/%d) — "
+                "possible robot check, retrying in 10s...",
+                product_name, attempt + 1, max_attempts,
+            )
+            time.sleep(10)
+
+    logger.warning(
+        "No products found for '%s' after %d attempts", product_name, max_attempts
+    )
+    return []
 
 
 def _find_result_cards(soup: BeautifulSoup) -> list:

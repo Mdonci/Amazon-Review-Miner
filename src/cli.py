@@ -8,6 +8,7 @@ import math
 import os
 import re
 import sys
+import time
 from collections import Counter
 from datetime import datetime
 
@@ -201,7 +202,18 @@ def _resolve_target(
 
     # Search term
     logger.info("Searching Amazon for: '%s'", query)
-    results = search_product(query, client)
+
+    results: list = []
+    for attempt in range(3):
+        results = search_product(query, client)
+        if results:
+            break
+        if attempt < 2:
+            logger.warning(
+                "No results on attempt %d/%d, retrying in 15s...",
+                attempt + 1, 3,
+            )
+            time.sleep(15)
 
     if not results:
         raise RuntimeError(f"No results found for query: {query}")

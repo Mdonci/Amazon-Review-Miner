@@ -6,10 +6,10 @@ proxy:
   rotate_ip: true
 
 rate_limits:
-  queries_per_hour: 3
-  seconds_between_pages: 60
+  queries_per_hour: 12
+  seconds_between_pages: 5
   max_retries: 3
-  retry_backoff_base: 30
+  retry_backoff_base: 15
 
 scraping:
   max_reviews: 2000
